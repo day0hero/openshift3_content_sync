@@ -1,0 +1,1 @@
+# openshift3_content_sync
