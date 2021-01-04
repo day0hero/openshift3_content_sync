@@ -1,15 +1,26 @@
 # openshift3_content_sync
 Use this program to download all of the rpms and container images from access.redhat.com and
-registry.redhat.io to support the installation of OpenShift 3, and Satellite 6.x
+registry.redhat.io to support the installation of OpenShift 3, and Satellite 6.x using the following:
 - skopeo
 - split
 - cat
 
-### Requirements
-A Red Hat subscription is required to run this script as well as a Service Account used for
-registry.redhat.io
+### Machine Requirements 
+- RHEL 7.x
+- 4GB RAM
+- 4vCPU
+- 600Gb data disk 
+-- Total Used after sync and archive: 
 
-This program can be run with the individual pieces or let the program do it all. 
+### Account Requirements
+This program requires a subscription for:
+- Red Hat Enterprise Linux 7
+- Red Hat Satellite (if syncing Satellite RPMS)
+- Red Hat OpenShift 
+
+A service account for `registry.redhat.io` is also required.
+
+`This program can be run with the individual pieces or let the program do it all.`
 
 #### To run al a carte:
 ```bash 
@@ -17,16 +28,16 @@ This program can be run with the individual pieces or let the program do it all.
 
 Options:
   - prereqs
-  - ocp3_sync
-  - rpm_sync
+  - ocp3
+  - rpms
   - split
   - sync 
   - bundle
 ```
 |option|description|
 |------|-----------|
-|prereqs| Configures authentication for `registry.redhat.io`|
-|ocp3_sync|This function is for logging into the red hat registry and pulling images required for OpenShift3|
-|split|Takes the downloaded content, creates archive and then splits into `4096M` chunks|
-|sync|Runs the prereqs, ocp3_sync, rpm_sync and split functions in a single call|
-|bundle|Uses `cat` to put the pieces back together on the air-gapped side|
+|prereqs| Authenticates to registry and CDN: Enables repositories and creates directory scaffolding |
+|ocp3| Syncs container images required for OCP3 installation and S2I templates |
+|split|Creates archive of content,and splits into user defined chunks|
+|sync|Executes all functions except for bundle|
+|bundle| Bundles the split chunks back into a single archive |
