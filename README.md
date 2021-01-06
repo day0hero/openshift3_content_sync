@@ -1,6 +1,7 @@
 # openshift3_content_sync
 Use this program to download all of the rpms and container images from access.redhat.com and
 registry.redhat.io to support the installation of OpenShift 3, and Satellite 6.x using the following:
+
 - skopeo
 - split
 - cat
@@ -10,7 +11,7 @@ registry.redhat.io to support the installation of OpenShift 3, and Satellite 6.x
 - 4GB RAM
 - 4vCPU
 - 600Gb data disk 
--- Total Used after sync and archive: 
+-- Total Used after sync and archive: `130Gb`
 
 ### Account Requirements
 This program requires a subscription for:
@@ -32,6 +33,7 @@ Options:
   - rpms
   - split
   - sync 
+  - validate
   - bundle
 ```
 |option|description|
@@ -41,3 +43,4 @@ Options:
 |split|Creates archive of content,and splits into user defined chunks|
 |sync|Executes all functions except for bundle|
 |bundle| Bundles the split chunks back into a single archive |
+|validate| Validates that shasums match on the content and bundle archive |
