@@ -1,80 +1,26 @@
 #!/bin/bash
-
 REGISTRY=registry.redhat.io
-SYNC_PATH=/opt/sync
-REGISTRY_USER='<registry.io_ServiceAccount>'
-REG_USER='<redhat_portal_username>'
-POOL_ID='<subscription_pool_id>'
-SYNC_DIR=/opt/sync
-BUNDLE_TARBALL=<name_of_bundle_tarball> # Disconnected name of repackaged tarball #
-BUNDLE_DIR=${SYNC_PATH}/data
+REGISTRY_USER=<registry.redhat.io|serviceAccount>
+REG_USER=<access.redhat.com|userAccount>
+POOL_ID=<subscription_manager_pool_id>
 PREFIX=export
+SYNC_DIR=/opt/sync/content
+SPLIT_DIR=/opt/sync/split
+SPLIT_TARBALL="${SPLIT_DIR}"/synced-content.tar
+BUNDLE_DIR="${SYNC_DIR}"/bundle
+BUNDLE_TARBALL=${BUNDLE_DIR}/${PREFIX}-bundle.tar
 CHUNK_SIZE=4096M
 
-
 if [ $UID != 0 ]; then
-  echo "You must be root to run this program"
+  echo "You shold be root or use SUDO to run this program"
 fi
 
+#####################################################################
 prereqs () {
-echo "installing prereq packages"
-declare -a StringArray=("podman" "skopeo" "unzip" "createrepo" "yum-utils")
-for val in ${StringArray[@]}; do
-  yum -y install ${val};
-done
-
-if [ -f ~/.docker/config.json ]; then
-  echo "Logging into ${REGISTRY} with provided credentials"
-  podman login --username ${REGISTRY_USER} --password ${registry_password} registry.redhat.io --authfile ~/.docker/config.json
-else
-  echo "Enter service account password - password will be masked"
-  read -s registry_password
-
-  mkdir -p ~/.docker/
-  echo "Logging into ${REGISTRY} with provided credentials"
-  podman login --username ${REGISTRY_USER} --password ${registry_password} registry.redhat.io --authfile ~/.docker/config.json
-  echo "Credentials are stored ~/.docker/config.json"
-fi
-}
-
-ocp3_sync () {
-echo "Syncing OpenShift3 container images"
-while read lines; do
-  base=$(echo "$lines" | awk -F'[/]' '{print $2}')
-  tagMod=$(echo "$lines" | awk -F'[/]' '{print $3}' | grep ':' | sed 's/:/-/')
-  image=$(echo "$lines" | awk -F'[/]' '{print $3}')
-
-  echo -e "Syncing ${image} to ${SYNC_PATH}/${base}/${tagMod}"
-  if [[ ! -d ${base}/${tagMod} ]]; then
-    mkdir -p ${SYNC_PATH}/${base}/${tagMod}
-  fi
-
-  skopeo copy --all docker://"$lines" dir:${SYNC_PATH}/${base}/${tagMod}
-done < ./images
-
-echo "Syncing OpenShift S2I container images"
-while read lines; do
-  base=$(echo "$lines" | awk -F'[/]' '{print $2}')
-  tagMod=$(echo "$lines" | awk -F'[/]' '{print $3}' | grep ':' | sed 's/:/-/')
-  image=$(echo "$lines" | awk -F'[/]' '{print $3}')
-
-  echo -e "Syncing ${image} to ${SYNC_PATH}/${base}/${tagMod}"
-  if [[ ! -d ${base}/${tagMod} ]]; then
-    mkdir -p ${SYNC_PATH}/${base}/${tagMod}
-  fi
-
-  skopeo copy --all docker://"$lines" dir:${SYNC_PATH}/${base}/${tagMod}
-done < ./s2i_images
-}
-
-rpm_sync () {
-echo "Enter the password for your CDN account | password will be masked"
+echo "Enter the password for your CDN (access.redhat.com) account | password will be hidden"
 read -s REG_PASSWORD
-#
 subscription-manager register --username ${REG_USER} --password ${REG_PASSWORD}
-#
 subscription-manager attach --pool ${POOL_ID}
-#
 subscription-manager repos --disable='*'
 
 declare -a stringArray=('rhel-7-server-rpms' \
@@ -87,14 +33,21 @@ declare -a stringArray=('rhel-7-server-rpms' \
 'rhel-7-server-satellite-maintenance-6-rpms' \
 'rhel-server-rhscl-7-rpms')
 
-for val in "${stringArray[@]}";
- do
-  echo "Enabling ${val}";
-  subscription-manager repos --enable=${val} ;
- done
+echo "Enabling ${stringArray} repository"
+subscription-manager repos --enable=rhel-7-server-rpms \
+--enable=rhel-7-server-extras-rpms \
+--enable=rhel-7-server-ose-3.11-rpms \
+--enable=rhel-7-server-ansible-2.8-rpms \
+--enable=rhel-7-server-ansible-2.9-rpms \
+--enable=rhel-7-server-satellite-6.8-rpms \
+--enable=rhel-7-server-satellite-maintenance-6-rpms \
+--enable=rhel-server-rhscl-7-rpms 
 
-echo "install packages to begin syncing rpms from CDN"
-sudo yum -y install createrepo git yum-utils
+echo "installing packages"
+declare -a StringArray=("podman" "skopeo" "unzip" "createrepo" "yum-utils" "git")
+for val in ${StringArray[@]}; do
+  yum -y install ${val};
+done
 
 if [ -z "${SYNC_DIR}" ]; then
   echo "Absolute path where content should be sync'd | ex: /tmp/sync"
@@ -113,52 +66,166 @@ else
   mkdir -p ${SYNC_DIR}
 fi
 
+}
+
+#####################################################################
+ocp3 () {
+echo "Configure registry authentication"
+if [ -f ~/.docker/config.json ]; then
+  echo "Logging into ${REGISTRY} with provided credentials"
+  podman login --username ${REGISTRY_USER} registry.redhat.io --authfile ~/.docker/config.json
+else
+  echo "Enter service account password - password will be hidden"
+  read -s registry_password
+  mkdir -p ~/.docker/
+  echo "Logging into ${REGISTRY} with provided credentials"
+  podman login --username ${REGISTRY_USER} --password ${registry_password} registry.redhat.io --authfile ~/.docker/config.json
+  echo "Credentials are stored ~/.docker/config.json"
+fi
+
+echo "Syncing OpenShift3 container images"
+while read lines; do
+  base=$(echo "$lines" | awk -F'[/]' '{print $2}')
+  tagMod=$(echo "$lines" | awk -F'[/]' '{print $3}' | grep ':' | sed 's/:/-/')
+  image=$(echo "$lines" | awk -F'[/]' '{print $3}')
+  
+  echo -e "Syncing ${image} to ${SYNC_DIR}/${base}/${tagMod}"
+  if [[ ! -d ${base}/${tagMod} ]]; then
+    mkdir -p ${SYNC_DIR}/${base}/${tagMod}
+  fi
+
+  skopeo copy --all docker://"$lines" dir:${SYNC_DIR}/${base}/${tagMod} 
+done < ./images
+
+echo "Syncing OpenShift S2I container images"
+while read lines; do
+  base=$(echo "$lines" | awk -F'[/]' '{print $2}')
+  tagMod=$(echo "$lines" | awk -F'[/]' '{print $3}' | grep ':' | sed 's/:/-/')
+  image=$(echo "$lines" | awk -F'[/]' '{print $3}')
+  
+  echo -e "Syncing ${image} to ${SYNC_DIR}/${base}/${tagMod}"
+  if [[ ! -d ${base}/${tagMod} ]]; then
+    mkdir -p ${SYNC_DIR}/${base}/${tagMod}
+  fi
+
+  skopeo copy --all docker://"$lines" dir:${SYNC_DIR}/${base}/${tagMod} 
+done < ./s2i_images
+
+}
+
+#####################################################################
+# Use this function to sync all of the rpms required for:
+# - Satellite 6.8
+# - OpenShift 3.11
+rpms () {
+declare -a stringArray=('rhel-7-server-rpms' \
+'rhel-7-server-extras-rpms' \
+'rhel-7-server-extras-rpms' \
+'rhel-7-server-ose-3.11-rpms' \
+'rhel-7-server-ansible-2.8-rpms' \
+'rhel-7-server-ansible-2.9-rpms' \
+'rhel-7-server-satellite-6.8-rpms' \
+'rhel-7-server-satellite-maintenance-6-rpms' \
+'rhel-server-rhscl-7-rpms')
+
 echo "Running reposync"
 for repo in "${stringArray[@]}"
  do
   echo "Running reposync on ${repo}"
-  reposync --gpgcheck -lm --repoid=${repo} --download_path=${SYNC_DIR}
+  reposync --gpgcheck -lm --repoid=${repo} --download_path=${SYNC_DIR} 
  done
+
 }
 
+#####################################################################
 #This function splits the syncrhonized content into predefined chunks
 split () {
-  echo "Splitting "${BUNDLE_TARBALL}" into ${CHUNK_SIZE} pieces"
-  split -b ${CHUNK_SIZE} "${BUNDLE_TARBALL}" "${BUNDLE_DIR}"/${PREFIX}
-  for chunk in ${BUNDLE_DIR}/*;
+  echo "Creating archive of sync'd content"
+    mkdir -p ${SPLIT_DIR}
+    tar cvf ${SPLIT_TARBALL} ${SYNC_DIR}
+    sha256sum ${SPLIT_TARBALL} >> ${SPLIT_DIR}/split-manifest.txt
+
+  echo "Splitting "${SPLIT_TARBALL}" into ${CHUNK_SIZE} pieces to "${SPLIT_DIR}"/"${PREFIX}-" "
+    /bin/split -b "${CHUNK_SIZE}" "${SPLIT_TARBALL}" "${SPLIT_DIR}"/"${PREFIX}"-
+    sha256sum "${SPLIT_TARBALL}" > ${SPLIT_DIR}/content-archive-sha256sum.txt
+
+  for chunk in ${SPLIT_DIR}/"${PREFIX}"-*; 
     do
-      echo -e $(sha256sum ${chunk}) >> ${BUNDLE_DIR}/bundle_split-manifest.txt
+      echo -e $(sha256sum ${chunk}) >> ${SPLIT_DIR}/split-manifest-sha256sum.txt
     done
+
 }
 
+#####################################################################
 #This function is to re-bundle the split pieces on the airgapped environment.
 bundle () {
-echo "putting the chunks back together"
-cat ${BUNDLE_DIR}/${PREFIX}* > ${BUNDLE_DIR}/${PREFIX}-bundled.tar
+  echo "creating "${BUNDLE_DIR}""
+    mkdir -p "${BUNDLE_DIR}"
 
-echo "run shasum and validate that it matches"
-sha256sum ${BUNDLE_DIR}/${PREFIX}-bundled.tar > ${PREFIX}-bundled-sha.txt
+  echo "putting the chunks back together"
+    /usr/bin/cat "${SPLIT_DIR}"/"${PREFIX}"-* > "${BUNDLE_DIR}"/"${PREFIX}"-bundled.tar
+  
+  echo "run shasum and validate that it matches"
+    sha256sum ${BUNDLE_DIR}/${PREFIX}-bundled.tar > ${BUNDLE_DIR}/${PREFIX}-bundled-sha256sum.txt
+
 }
 
+#####################################################################
+#This function is to validate the shasums between the original content
+#tarball and the bundled tarball.
+validate_archive () {
+  echo "Validating the shasums"
+    BUNDLE_ARCHIVE=$(awk '{print $1}' ${BUNDLE_DIR}/${PREFIX}-bundled-sha256sum.txt)
+    CONTENT_ARCHIVE=$(awk '{print $1}' ${SPLIT_DIR}/content-archive-sha256sum.txt)
+
+  if [[ "${BUNDLE_ARCHIVE}" == "${CONTENT_ARCHIVE}" ]] ; then
+     echo "The shasums match"
+    else
+     echo "They don't match"
+  fi
+
+}
+######################################################################
 case $1 in
- sync)
-  echo "Running the pre-requisite function"
+ prereqs)
+   echo "Running pre-reqs"
    prereqs
-  echo "Running the OCP3 image sync"
-   ocp3_sync
-  echo "Running the RPM sync"
-   rpm_sync
-  echo "Splitting the content"
-   split
  ;;
  bundle)
    echo "Re-Bundling the split files back into a single tarball"
    bundle
  ;;
+ ocp3)
+  echo "Syncing openshift images"
+  ocp3
+ ;;
+ rpms)
+  echo "Running the RPM sync"
+  rpms
+ ;;
+ split)
+  echo "Splitting the content"
+  split
+ ;;
+ sync)
+  echo "Sync openshift, satellite images and rpms then splitting"
+   prereqs
+   ocp3
+   rpms
+   split
+ ;;
+ validate)
+  echo "Validate the shasums"
+    validate_archive
+ ;;
  *)
   echo -e "Usage: content_sync.sh <argument>
-            ./content_sync.sh sync
-            ./content_sycn.sh bundle
+           prereqs  : Registers to CDN and installs packages
            bundle   : Puts content chunks back into single file
-           sync     : Downloads and splits content into moveable chunks"
+           ocp3     : Syncs OpenShift and S2I images 
+           rpms     : Syncs RPMs for OpenShift and Satellite products
+           split    : Splits content into moveable chunks
+           sync     : Downloads and splits content into moveable chunks
+           validate : Validate the sha256sum's from the content archive and bundle archive"
  ;;
+esac
