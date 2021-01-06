@@ -1,8 +1,8 @@
 #!/bin/bash
 REGISTRY=registry.redhat.io
-REGISTRY_USER=<registry.redhat.io|serviceAccount>
-REG_USER=<access.redhat.com|userAccount>
-POOL_ID=<subscription_manager_pool_id>
+REGISTRY_USER=`<registry.redhat.io|serviceAccount>`
+REG_USER=`<access.redhat.com|userAccount>`
+POOL_ID=`<subscription_manager_pool_id>`
 PREFIX=export
 SYNC_DIR=/opt/sync/content
 SPLIT_DIR=/opt/sync/split
