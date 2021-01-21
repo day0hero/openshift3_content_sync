@@ -11,7 +11,7 @@ registry.redhat.io to support the installation of OpenShift 3, and Satellite 6.x
 - 4GB RAM
 - 4vCPU
 - 600Gb data disk 
--- Total Used after sync and archive: `130Gb`
+-- Total Used after sync and archive: `389Gb` Archive total: `130Gb`
 
 ### Account Requirements
 This program requires a subscription for:
